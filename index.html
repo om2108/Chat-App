@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Pro Chat</title>
@@ -97,7 +98,7 @@
 
 <body>
 
-  <header>💬 Distributed Chat System</header>
+  <header>💬 Chat System</header>
 
   <div id="chat-container"></div>
 
@@ -123,15 +124,14 @@
       e.preventDefault();
       if (input.value) {
         const clientOffset = `${socket.id}-${counter++}`;
-        addMessage(input.value, 'sent');
-        socket.emit('chat message', input.value, clientOffset, () => {});
+        socket.emit('chat message', input.value, clientOffset, () => { });
         input.value = '';
       }
     });
 
     socket.on('chat message', (msg, serverOffset) => {
-      addMessage(msg, 'received');
-      socket.auth.serverOffset = serverOffset;
+      const type = msg.sender === socket.id ? 'sent' : 'received';
+      addMessage(msg.text || msg, type);
     });
 
     function addMessage(msg, type) {
@@ -144,4 +144,5 @@
   </script>
 
 </body>
+
 </html>
