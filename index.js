@@ -22,7 +22,8 @@ await db.exec(`
   CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     client_offset TEXT UNIQUE,
-    content TEXT
+    content TEXT,
+    sender TEXT
   );
 `);
 
@@ -33,41 +34,47 @@ app.get("/", (req, res) => {
 
 // ✅ Socket logic
 io.on("connection", async (socket) => {
+
+  // 🔹 Send message
   socket.on("chat message", async (msg, clientOffset, callback) => {
     let result;
+
     try {
       result = await db.run(
-        "INSERT INTO messages (content, client_offset) VALUES (?, ?)",
+        "INSERT INTO messages (content, client_offset, sender) VALUES (?, ?, ?)",
         msg,
         clientOffset,
+        socket.id
       );
     } catch (e) {
       if (e.errno === 19) {
-        callback(); // duplicate message
+        return callback(); // duplicate
       }
       return;
     }
 
-    io.emit(
-      "chat message",
-      {
-        text: msg,
-        sender: socket.id,
-      },
-      result.lastID,
-    );
+    io.emit("chat message", {
+      text: msg,
+      sender: socket.id,
+      id: result.lastID
+    });
+
     callback();
   });
 
-  // Recover old messages
+  // 🔹 Recover old messages (FIXED FORMAT)
   if (!socket.recovered) {
     try {
       await db.each(
-        "SELECT id, content FROM messages WHERE id > ?",
+        "SELECT id, content, sender FROM messages WHERE id > ?",
         [socket.handshake.auth.serverOffset || 0],
         (_err, row) => {
-          socket.emit("chat message", row.content, row.id);
-        },
+          socket.emit("chat message", {
+            text: row.content,
+            sender: row.sender,
+            id: row.id
+          });
+        }
       );
     } catch (e) {
       console.log("Recovery error:", e);
@@ -75,9 +82,9 @@ io.on("connection", async (socket) => {
   }
 });
 
-// ✅ IMPORTANT PORT FIX (for Render)
+// ✅ PORT FIX
 const port = process.env.PORT || 3000;
 
 server.listen(port, () => {
-  console.log(`server running at http://localhost:${port}`);
+  console.log(`Server running at http://localhost:${port}`);
 });

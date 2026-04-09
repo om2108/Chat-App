@@ -21,77 +21,76 @@
       color: white;
     }
 
-    /* Header */
     header {
       background: #1e293b;
-      padding: 15px;
+      padding: 12px;
       text-align: center;
       font-size: 18px;
       font-weight: bold;
       border-bottom: 1px solid #334155;
     }
 
-    /* Chat container */
     #chat-container {
       flex: 1;
       overflow-y: auto;
-      padding: 15px;
+      padding: 10px;
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
 
-    /* Messages */
     .message {
-      max-width: 60%;
-      padding: 10px 15px;
-      border-radius: 15px;
-      word-wrap: break-word;
+      max-width: 75%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+
+    .sender {
+      font-size: 11px;
+      opacity: 0.7;
+      margin-bottom: 3px;
     }
 
     .sent {
       background: #3b82f6;
       align-self: flex-end;
-      border-bottom-right-radius: 5px;
     }
 
     .received {
       background: #334155;
       align-self: flex-start;
-      border-bottom-left-radius: 5px;
     }
 
-    /* Input area */
     #form {
       display: flex;
       padding: 10px;
       background: #1e293b;
-      border-top: 1px solid #334155;
     }
 
     #input {
       flex: 1;
-      padding: 12px;
+      padding: 10px;
       border-radius: 25px;
       border: none;
-      outline: none;
       background: #0f172a;
       color: white;
     }
 
     button {
       margin-left: 10px;
-      padding: 12px 18px;
+      padding: 10px 14px;
       border: none;
       border-radius: 25px;
       background: #3b82f6;
       color: white;
       cursor: pointer;
-      transition: 0.3s;
     }
 
-    button:hover {
-      background: #2563eb;
+    @media (max-width: 600px) {
+      .message {
+        max-width: 90%;
+      }
     }
   </style>
 </head>
@@ -110,10 +109,9 @@
   <script src="/socket.io/socket.io.js"></script>
   <script>
     let counter = 0;
+
     const socket = io({
-      auth: { serverOffset: 0 },
-      ackTimeout: 10000,
-      retries: 3,
+      auth: { serverOffset: 0 }
     });
 
     const form = document.getElementById('form');
@@ -122,22 +120,38 @@
 
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      if (input.value) {
-        const clientOffset = `${socket.id}-${counter++}`;
-        socket.emit('chat message', input.value, clientOffset, () => { });
-        input.value = '';
-      }
+
+      if (!input.value.trim()) return;
+
+      const clientOffset = `${socket.id}-${counter++}`;
+
+      socket.emit('chat message', input.value, clientOffset);
+
+      input.value = '';
     });
 
-    socket.on('chat message', (msg, serverOffset) => {
-      const type = msg.sender === socket.id ? 'sent' : 'received';
-      addMessage(msg.text || msg, type);
+    socket.on('chat message', (msg) => {
+      const isMe = msg.sender === socket.id;
+      const type = isMe ? 'sent' : 'received';
+      const sender = isMe ? 'You' : 'User';
+
+      addMessage(msg.text, type, sender);
     });
 
-    function addMessage(msg, type) {
+    function addMessage(text, type, sender) {
       const div = document.createElement('div');
       div.classList.add('message', type);
-      div.textContent = msg;
+
+      const senderDiv = document.createElement('div');
+      senderDiv.classList.add('sender');
+      senderDiv.textContent = sender;
+
+      const msgDiv = document.createElement('div');
+      msgDiv.textContent = text;
+
+      div.appendChild(senderDiv);
+      div.appendChild(msgDiv);
+
       chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;
     }
