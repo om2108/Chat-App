@@ -25,9 +25,13 @@
       background: #1e293b;
       padding: 12px;
       text-align: center;
-      font-size: 18px;
       font-weight: bold;
-      border-bottom: 1px solid #334155;
+    }
+
+    #users {
+      padding: 8px;
+      font-size: 12px;
+      background: #020617;
     }
 
     #chat-container {
@@ -41,15 +45,8 @@
 
     .message {
       max-width: 75%;
-      padding: 10px 14px;
+      padding: 10px;
       border-radius: 12px;
-      font-size: 14px;
-    }
-
-    .sender {
-      font-size: 11px;
-      opacity: 0.7;
-      margin-bottom: 3px;
     }
 
     .sent {
@@ -62,6 +59,21 @@
       align-self: flex-start;
     }
 
+    .sender {
+      font-size: 11px;
+      opacity: 0.7;
+    }
+
+    .status {
+      font-size: 10px;
+      opacity: 0.6;
+    }
+
+    #typing {
+      font-size: 12px;
+      padding: 5px;
+    }
+
     #form {
       display: flex;
       padding: 10px;
@@ -71,7 +83,7 @@
     #input {
       flex: 1;
       padding: 10px;
-      border-radius: 25px;
+      border-radius: 20px;
       border: none;
       background: #0f172a;
       color: white;
@@ -79,18 +91,11 @@
 
     button {
       margin-left: 10px;
-      padding: 10px 14px;
+      padding: 10px;
+      border-radius: 20px;
       border: none;
-      border-radius: 25px;
       background: #3b82f6;
       color: white;
-      cursor: pointer;
-    }
-
-    @media (max-width: 600px) {
-      .message {
-        max-width: 90%;
-      }
     }
   </style>
 </head>
@@ -99,58 +104,101 @@
 
   <header>💬 Chat System</header>
 
+  <div id="users"></div>
   <div id="chat-container"></div>
+  <div id="typing"></div>
 
   <form id="form">
-    <input id="input" placeholder="Type a message..." autocomplete="off" />
-    <button type="submit">Send</button>
+    <input id="input" placeholder="Type message..." />
+    <button>Send</button>
   </form>
 
   <script src="/socket.io/socket.io.js"></script>
+
   <script>
-    let counter = 0;
+    // 👤 Username
+    let username = localStorage.getItem("username");
+
+    if (!username) {
+      username = prompt("Enter your name:");
+      localStorage.setItem("username", username);
+    }
 
     const socket = io({
-      auth: { serverOffset: 0 }
+      auth: { username }
     });
 
-    const form = document.getElementById('form');
-    const input = document.getElementById('input');
-    const chat = document.getElementById('chat-container');
+    const form = document.getElementById("form");
+    const input = document.getElementById("input");
+    const chat = document.getElementById("chat-container");
+    const usersDiv = document.getElementById("users");
+    const typingDiv = document.getElementById("typing");
 
-    form.addEventListener('submit', (e) => {
+    let counter = 0;
+
+    form.addEventListener("submit", (e) => {
       e.preventDefault();
-
       if (!input.value.trim()) return;
 
-      const clientOffset = `${socket.id}-${counter++}`;
+      const clientOffset = socket.id + "-" + counter++;
 
-      socket.emit('chat message', input.value, clientOffset);
-
-      input.value = '';
+      socket.emit("chat message", input.value, clientOffset);
+      input.value = "";
     });
 
-    socket.on('chat message', (msg) => {
-      const isMe = msg.sender === socket.id;
-      const type = isMe ? 'sent' : 'received';
-      const sender = isMe ? 'You' : 'User';
+    socket.on("chat message", (msg) => {
+      const isMe = msg.sender === username;
 
-      addMessage(msg.text, type, sender);
+      addMessage(msg.text, isMe ? "sent" : "received", msg.sender, msg.status, msg.id);
+
+      if (!isMe) socket.emit("seen", msg.id);
     });
 
-    function addMessage(text, type, sender) {
-      const div = document.createElement('div');
-      div.classList.add('message', type);
+    socket.on("online users", (users) => {
+      usersDiv.textContent = "🟢 Online: " + users.join(", ");
+    });
 
-      const senderDiv = document.createElement('div');
-      senderDiv.classList.add('sender');
+    socket.on("typing", (user) => {
+      typingDiv.textContent = user + " is typing...";
+    });
+
+    socket.on("stop typing", () => {
+      typingDiv.textContent = "";
+    });
+
+    socket.on("message seen", (id) => {
+      const el = document.getElementById("msg-" + id);
+      if (el) el.textContent = "✔✔ Seen";
+    });
+
+    input.addEventListener("input", () => {
+      socket.emit("typing");
+
+      clearTimeout(window.typingTimeout);
+      window.typingTimeout = setTimeout(() => {
+        socket.emit("stop typing");
+      }, 1000);
+    });
+
+    function addMessage(text, type, sender, status = "", id = "") {
+      const div = document.createElement("div");
+      div.classList.add("message", type);
+
+      const senderDiv = document.createElement("div");
+      senderDiv.classList.add("sender");
       senderDiv.textContent = sender;
 
-      const msgDiv = document.createElement('div');
+      const msgDiv = document.createElement("div");
       msgDiv.textContent = text;
+
+      const statusDiv = document.createElement("div");
+      statusDiv.classList.add("status");
+      statusDiv.id = "msg-" + id;
+      statusDiv.textContent = status;
 
       div.appendChild(senderDiv);
       div.appendChild(msgDiv);
+      div.appendChild(statusDiv);
 
       chat.appendChild(div);
       chat.scrollTop = chat.scrollHeight;

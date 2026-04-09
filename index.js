@@ -12,79 +12,85 @@ const io = new Server(server);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// ✅ Database setup
+// ✅ DB
 const db = await open({
   filename: "chat.db",
   driver: sqlite3.Database,
 });
 
 await db.exec(`
-  CREATE TABLE IF NOT EXISTS messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    client_offset TEXT UNIQUE,
-    content TEXT,
-    sender TEXT
-  );
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  client_offset TEXT UNIQUE,
+  content TEXT,
+  sender TEXT
+);
 `);
 
-// ✅ Serve frontend
+// ✅ Serve UI
 app.get("/", (req, res) => {
   res.sendFile(join(__dirname, "index.html"));
 });
 
-// ✅ Socket logic
-io.on("connection", async (socket) => {
+// 🟢 Online users
+const users = new Map();
 
-  // 🔹 Send message
-  socket.on("chat message", async (msg, clientOffset, callback) => {
-    let result;
+io.on("connection", (socket) => {
+  socket.username = socket.handshake.auth.username || "Anonymous";
 
-    try {
-      result = await db.run(
-        "INSERT INTO messages (content, client_offset, sender) VALUES (?, ?, ?)",
-        msg,
-        clientOffset,
-        socket.id
-      );
-    } catch (e) {
-      if (e.errno === 19) {
-        return callback(); // duplicate
-      }
-      return;
-    }
+  users.set(socket.id, socket.username);
+  io.emit("online users", Array.from(users.values()));
+
+  // 💬 Message
+  socket.on("chat message", async (msg, clientOffset) => {
+    const result = await db.run(
+      "INSERT INTO messages (content, client_offset, sender) VALUES (?, ?, ?)",
+      msg,
+      clientOffset,
+      socket.username
+    );
 
     io.emit("chat message", {
       text: msg,
-      sender: socket.id,
-      id: result.lastID
+      sender: socket.username,
+      status: "✔ Delivered",
+      id: result.lastID,
     });
-
-    callback();
   });
 
-  // 🔹 Recover old messages (FIXED FORMAT)
-  if (!socket.recovered) {
-    try {
-      await db.each(
-        "SELECT id, content, sender FROM messages WHERE id > ?",
-        [socket.handshake.auth.serverOffset || 0],
-        (_err, row) => {
-          socket.emit("chat message", {
-            text: row.content,
-            sender: row.sender,
-            id: row.id
-          });
-        }
-      );
-    } catch (e) {
-      console.log("Recovery error:", e);
-    }
-  }
+  // ✔ Seen
+  socket.on("seen", (id) => {
+    socket.broadcast.emit("message seen", id);
+  });
+
+  // ✍️ Typing
+  socket.on("typing", () => {
+    socket.broadcast.emit("typing", socket.username);
+  });
+
+  socket.on("stop typing", () => {
+    socket.broadcast.emit("stop typing");
+  });
+
+  // 🔄 Recover messages
+  db.each("SELECT * FROM messages", (err, row) => {
+    socket.emit("chat message", {
+      text: row.content,
+      sender: row.sender,
+      status: "",
+      id: row.id,
+    });
+  });
+
+  socket.on("disconnect", () => {
+    users.delete(socket.id);
+    io.emit("online users", Array.from(users.values()));
+  });
 });
 
-// ✅ PORT FIX
+// ✅ PORT
 const port = process.env.PORT || 3000;
 
 server.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}`);
+  console.log(`Server running on http://localhost:${port}`);
 });
